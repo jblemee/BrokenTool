@@ -8,4 +8,5 @@ Download
 BrokenTool may be downloaded from any of the following sites:
 
 - [Curse.com](https://www.curseforge.com/minecraft/mc-mods/broken-tool)
+- [Modrinth.com](https://modrinth.com/mod/broken-tool)
 - [Github Releases](https://github.com/jblemee/BrokenTool/releases)
