@@ -1,13 +1,16 @@
 package co.lemee.brokentoolmod;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerDestroyItemEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -27,9 +30,8 @@ public class BrokenToolMod
     // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public BrokenToolMod()
-    {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+    public BrokenToolMod(FMLJavaModLoadingContext context) {
+        IEventBus modEventBus = context.getModEventBus();
 
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
@@ -45,13 +47,17 @@ public class BrokenToolMod
 
     @SubscribeEvent
     public void onItemBreak(PlayerDestroyItemEvent itemEvent) {
-        Item brokenItem = itemEvent.getOriginal().getItem();
+        ItemStack brokenItemStack = itemEvent.getOriginal();
         Inventory playerInventory = itemEvent.getEntity().getInventory();
+        if(playerInventory.items.stream().anyMatch(x -> x.equals(brokenItemStack))) {
+            return;
+        }
+        Item brokenItem = brokenItemStack.getItem();
         List<ItemStack> sameTools = playerInventory.items.stream().filter(x -> x.getItem().getClass() == brokenItem.getClass()).toList();
-        if (sameTools.size() > 0) {
+        if (!sameTools.isEmpty()) {
             List<ItemStack> sameMaterialTool = sameTools.stream()
                     .filter(x -> x.getDescriptionId().equals(brokenItem.getDescriptionId())).toList();
-            ItemStack newTool = sameMaterialTool.size() > 0 ? sameMaterialTool.get(0) : sameTools.get(0);
+            ItemStack newTool = !sameMaterialTool.isEmpty() ? sameMaterialTool.get(0) : sameTools.get(0);
             if (newTool != null) {
                 playerInventory.add(playerInventory.selected, newTool);
                 playerInventory.removeItem(newTool);
