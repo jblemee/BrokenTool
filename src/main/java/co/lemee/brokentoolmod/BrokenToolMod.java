@@ -45,17 +45,17 @@ public class BrokenToolMod
     public void onItemBreak(PlayerDestroyItemEvent itemEvent) {
         ItemStack brokenItemStack = itemEvent.getOriginal();
         Inventory playerInventory = itemEvent.getEntity().getInventory();
-        if(playerInventory.items.stream().anyMatch(x -> x.equals(brokenItemStack))) {
+        if(playerInventory.getNonEquipmentItems().stream().anyMatch(x -> x.equals(brokenItemStack))) {
             return;
         }
         Item brokenItem = brokenItemStack.getItem();
-        List<ItemStack> sameTools = playerInventory.items.stream().filter(x -> x.getItem().getClass() == brokenItem.getClass()).toList();
+        List<ItemStack> sameTools = playerInventory.getNonEquipmentItems().stream().filter(x -> x.getItem().getClass() == brokenItem.getClass()).toList();
         if (!sameTools.isEmpty()) {
             List<ItemStack> sameMaterialTool = sameTools.stream()
                     .filter(x -> x.getItem().getDescriptionId().equals(brokenItem.getDescriptionId())).toList();
             ItemStack newTool = !sameMaterialTool.isEmpty() ? sameMaterialTool.getFirst() : sameTools.getFirst();
             if (newTool != null) {
-                playerInventory.add(playerInventory.selected, newTool);
+                playerInventory.add(playerInventory.getSelectedSlot(), newTool);
                 playerInventory.removeItem(newTool);
             }
         }
