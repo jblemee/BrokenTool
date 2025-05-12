@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "brokentoolmod",
+	"version": "${version}",
+	"name": "Broken Tool Mod",
+	"description": "A Minecraft mod that replace tools as they break. It will attempt to find a tool made of the same material first. If none are found, it will replace it with the first tool of the same type found in the inventory.",
+	"authors": [
+		"Jean-Baptiste Lemée"
+	],
+	"contact": {
+		"sources": "https://github.com/jblemee/BrokenTool"
+	},
+	"license": "WTFPL",
+	"icon": "assets/brokentoolmod/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"co.lemee.brokentoolmod.BrokenToolMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21.3",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
