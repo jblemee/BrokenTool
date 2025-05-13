@@ -2,17 +2,16 @@ package co.lemee.brokentoolmod;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.util.ActionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BrokenToolMod implements ModInitializer {
     // Define mod id in a common place for everything to reference
@@ -22,102 +21,58 @@ public class BrokenToolMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("Broken Tool Mod Initialized");
-        
-        // Register a listener for after block break events
-        PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
-            ItemStack mainHandStack = player.getMainHandStack();
-            
-            // If the main hand is empty, it might be because a tool just broke
-            if (mainHandStack.isEmpty()) {
-                // Try to find a tool to replace it with
+        LOGGER.info("Broken Tool Mod initialized");
+
+        // Register event to handle item breaks
+        UseItemCallback.EVENT.register((player, world, hand) -> {
+            ItemStack stack = player.getStackInHand(hand);
+            // Check if the item is about to break (1 durability left)
+            if (stack.isDamageable() && stack.getDamage() == stack.getMaxDamage() - 1) {
+                Item brokenItem = stack.getItem();
                 PlayerInventory playerInventory = player.getInventory();
-                
-                // The item that broke is the one that was just used to break the block
-                // We need to guess the type of tool that was used based on the broken block
-                Item brokenItem = findProbableToolTypeFromBrokenBlock(state, world, pos);
-                if (brokenItem == null) return;
-                
-                replaceWithSimilarTool(playerInventory, brokenItem);
-            } else if (mainHandStack.isDamageable() && mainHandStack.getDamage() == mainHandStack.getMaxDamage() - 1) {
-                // Tool is about to break (one use left)
-                Item aboutToBreakItem = mainHandStack.getItem();
-                PlayerInventory playerInventory = player.getInventory();
-                
-                // Find a replacement tool of the same type
-                prepareReplacementTool(playerInventory, aboutToBreakItem);
-            }
-        });
-        
-        // We also need to catch tools that break during item use (not block breaking)
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            server.getPlayerManager().getPlayerList().forEach(player -> {
-                ItemStack mainHandStack = player.getMainHandStack();
-                
-                // If main hand is empty, check if a tool just broke
-                if (mainHandStack.isEmpty()) {
-                    // We'll try to detect if a tool broke during use
-                    // This is a fallback method for tools that break during use not mining
-                    PlayerInventory playerInventory = player.getInventory();
-                    
-                    // Since we don't know what broke, try to find any tool in inventory 
-                    // (not ideal but better than nothing)
-                    for (ItemStack stack : playerInventory.main) {
-                        if (!stack.isEmpty() && stack.isDamageable()) {
-                            replaceWithSimilarTool(playerInventory, stack.getItem());
-                            break;
+
+                // Get all non-equipment items in inventory
+                List<ItemStack> nonEquipmentItems = playerInventory.main.stream()
+                        .filter(itemStack -> !itemStack.isEmpty() && !itemStack.equals(stack))
+                        .toList();
+
+                // Check if any of them match our broken item
+                List<ItemStack> sameTools = nonEquipmentItems.stream()
+                        .filter(x -> x.getItem().getClass() == brokenItem.getClass())
+                        .toList();
+
+                if (!sameTools.isEmpty()) {
+                    // Try to find tools of the same material
+                    List<ItemStack> sameMaterialTool = sameTools.stream()
+                            .filter(x -> x.getItem().getTranslationKey().equals(brokenItem.getTranslationKey()))
+                            .toList();
+
+                    ItemStack newTool = !sameMaterialTool.isEmpty() ? sameMaterialTool.get(0) : sameTools.get(0);
+
+                    // Flag to ensure we only replace the tool once
+                    final AtomicBoolean hasReplaced = new AtomicBoolean(false);
+
+                    // Register a tick callback to replace the tool after it breaks
+                    ServerTickEvents.END_SERVER_TICK.register(server -> {
+                        // Only execute once and only if the item is now empty (broken)
+                        if (!hasReplaced.get() && stack.isEmpty()) {
+                            // The original tool broke, replace it
+                            int slot = playerInventory.getSlotWithStack(newTool);
+                            if (slot >= 0) {
+                                ItemStack replacementTool = newTool.copy();
+                                playerInventory.removeStack(slot);
+                                playerInventory.setStack(playerInventory.selectedSlot, replacementTool);
+                                LOGGER.info("Replaced broken tool with " + replacementTool.getName().getString());
+                            }
+                            // Mark as replaced so this doesn't run again
+                            hasReplaced.set(true);
                         }
-                    }
-                }
-            });
-        });
-    }
-    
-    // This is a helper method to find a replacement tool
-    private void replaceWithSimilarTool(PlayerInventory playerInventory, Item brokenItem) {
-        List<ItemStack> sameTools = playerInventory.main.stream()
-                .filter(stack -> !stack.isEmpty())
-                .filter(stack -> stack.getItem().getClass() == brokenItem.getClass())
-                .collect(Collectors.toList());
-        
-        if (!sameTools.isEmpty()) {
-            // Try to find a tool of the same material first
-            List<ItemStack> sameMaterialTool = sameTools.stream()
-                    .filter(stack -> stack.getItem().getTranslationKey().equals(brokenItem.getTranslationKey()))
-                    .collect(Collectors.toList());
-            
-            ItemStack newTool = !sameMaterialTool.isEmpty() ? sameMaterialTool.get(0) : sameTools.get(0);
-            if (newTool != null) {
-                // Find the slot with the replacement tool
-                int slotWithTool = -1;
-                for (int i = 0; i < playerInventory.main.size(); i++) {
-                    if (playerInventory.main.get(i) == newTool) {
-                        slotWithTool = i;
-                        break;
-                    }
-                }
-                
-                if (slotWithTool != -1) {
-                    // Replace the broken tool with the new one
-                    playerInventory.main.set(playerInventory.selectedSlot, newTool);
-                    playerInventory.main.set(slotWithTool, ItemStack.EMPTY);
-                    LOGGER.info("Replaced broken tool with a similar one");
+                    });
                 }
             }
-        }
-    }
-    
-    // Helper to prepare a replacement tool before the current one breaks
-    private void prepareReplacementTool(PlayerInventory playerInventory, Item aboutToBreakItem) {
-        // We don't actually swap the tool yet, just log that we found one about to break
-        LOGGER.info("Tool is about to break: {}", aboutToBreakItem.getTranslationKey());
-    }
-    
-    // This method tries to determine what kind of tool was likely used to break a block
-    private Item findProbableToolTypeFromBrokenBlock(net.minecraft.block.BlockState state, World world, BlockPos pos) {
-        // This is a placeholder implementation - in a real mod you would 
-        // use more sophisticated logic to determine the tool type
-        // For now, we just return null to indicate we couldn't determine the tool
-        return null;
+
+            // Return unchanged result
+            return ActionResult.PASS;
+        });
     }
 }
